@@ -1,319 +1,148 @@
 // src/app/page.js
-"use client";
+import Link from "next/link";
+import { client, urlFor } from "../sanity/lib/client";
 
-import { useState, useEffect } from "react";
-// HAPUS import data statis: import { menuMakanan } from "../data/menu";
-import { client, urlFor } from "../sanity/lib/client"; // Import Sanity client
+// Mengatur halaman ini agar divalidasi ulang (revalidate) setiap 60 detik jika ada menu baru
+export const revalidate = 60;
 
-import MenuCard from "../components/MenuCard";
-import CartItem from "../components/CartItem";
-import CheckoutForm from "../components/CheckoutForm";
-import Toast from "../components/Toast";
-import { formatRupiah } from "../utils/format";
-
-export default function Home() {
-  // State untuk menyimpan data menu dari Sanity
-  const [menuMakanan, setMenuMakanan] = useState([]);
-  const [loadingMenu, setLoadingMenu] = useState(true);
-
-  const [keranjang, setKeranjang] = useState([]);
-  const [kategoriTerpilih, setKategoriTerpilih] = useState("Semua");
-  const [form, setForm] = useState({
-    namaPemesan: "",
-    alamat: "",
-    catatan: "",
-  });
-  const [formErrors, setFormErrors] = useState({});
-  const [toast, setToast] = useState({ pesan: "", tampil: false });
-  const [isClient, setIsClient] = useState(false);
-
-  const daftarKategori = ["Semua", "Makanan", "Minuman", "Cemilan"];
-
-  // Mengambil data MENU dari Sanity
-  useEffect(() => {
-    const fetchMenu = async () => {
-      try {
-        // Query GROQ: Mengambil semua dokumen bertipe 'menu'
-        const query = '*[_type == "menu"] | order(_createdAt asc)';
-        const data = await client.fetch(query);
-
-        // Format ulang data agar sesuai dengan struktur komponen MenuCard Anda
-        const formattedData = data.map((item) => ({
-          id: item._id, // Menggunakan ID unik bawaan Sanity
-          nama: item.nama,
-          deskripsi: item.deskripsi || "",
-          kategori: item.kategori,
-          harga: item.harga,
-          // Cek apakah ada gambar, jika tidak beri gambar placeholder (opsional)
-          gambar: item.gambar
-            ? urlFor(item.gambar).url()
-            : "https://via.placeholder.com/400",
-          tersedia: item.tersedia,
-        }));
-
-        setMenuMakanan(formattedData);
-      } catch (error) {
-        console.error("Gagal mengambil menu:", error);
-      } finally {
-        setLoadingMenu(false);
-      }
-    };
-
-    fetchMenu();
-  }, []);
-
-  // Mengambil data KERANJANG dari LocalStorage
-  useEffect(() => {
-    setIsClient(true);
-    const keranjangTersimpan = localStorage.getItem("rm_keranjang_belanja");
-    if (keranjangTersimpan) {
-      try {
-        setKeranjang(JSON.parse(keranjangTersimpan));
-      } catch (error) {
-        console.error("Gagal memuat data keranjang", error);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isClient) {
-      localStorage.setItem("rm_keranjang_belanja", JSON.stringify(keranjang));
-    }
-  }, [keranjang, isClient]);
-
-  const tampilkanToast = (pesan) => {
-    setToast({ pesan, tampil: true });
-    setTimeout(() => setToast({ pesan: "", tampil: false }), 2500);
-  };
-
-  const tambahKeKeranjang = (makanan) => {
-    const itemAda = keranjang.find((item) => item.id === makanan.id);
-    if (itemAda) {
-      setKeranjang(
-        keranjang.map((item) =>
-          item.id === makanan.id ? { ...item, jumlah: item.jumlah + 1 } : item,
-        ),
-      );
-    } else {
-      setKeranjang([...keranjang, { ...makanan, jumlah: 1 }]);
-    }
-    tampilkanToast(`${makanan.nama} ditambahkan!`);
-  };
-
-  const kurangiDariKeranjang = (id) => {
-    const itemAda = keranjang.find((item) => item.id === id);
-    if (itemAda.jumlah === 1) {
-      setKeranjang(keranjang.filter((item) => item.id !== id));
-    } else {
-      setKeranjang(
-        keranjang.map((item) =>
-          item.id === id ? { ...item, jumlah: item.jumlah - 1 } : item,
-        ),
-      );
-    }
-  };
-
-  const hapusDariKeranjang = (id) => {
-    setKeranjang(keranjang.filter((item) => item.id !== id));
-  };
-
-  const sampleHapusSemuaItem = () => {
-    if (confirm("Apakah Anda yakin ingin mengosongkan keranjang?")) {
-      setKeranjang([]);
-      tampilkanToast("Keranjang dikosongkan.");
-    }
-  };
-
-  const totalHarga = keranjang.reduce(
-    (total, item) => total + item.harga * item.jumlah,
-    0,
-  );
-  const totalItem = keranjang.reduce((total, item) => total + item.jumlah, 0);
-
-  const checkoutWhatsApp = () => {
-    let errors = {};
-    if (keranjang.length === 0) return alert("Keranjang masih kosong!");
-    if (!form.namaPemesan.trim())
-      errors.namaPemesan = "Nama pemesan wajib diisi!";
-    if (!form.alamat.trim()) errors.alamat = "Alamat pengiriman wajib diisi!";
-
-    if (Object.keys(errors).length > 0) {
-      setFormErrors(errors);
-      return;
-    }
-
-    setFormErrors({});
-    const nomorWA = "6285365968845";
-    let pesan = `*PESANAN BARU - RUMAH MAKAN*\n\n*Detail Pengiriman:*\n• Nama Pemesan: ${form.namaPemesan}\n• Alamat Lengkap: ${form.alamat}\n`;
-    if (form.catatan.trim()) pesan += `• Catatan: ${form.catatan}\n`;
-
-    pesan += `\n*Daftar Pesanan:*\n`;
-    keranjang.forEach((item) => {
-      pesan += `- ${item.nama} (${item.jumlah}x) : ${formatRupiah(item.harga * item.jumlah)}\n`;
-    });
-
-    pesan += `\n*Total Pembayaran: ${formatRupiah(totalHarga)}*\n\nTerima kasih!`;
-    window.open(
-      `https://wa.me/${nomorWA}?text=${encodeURIComponent(pesan)}`,
-      "_blank",
-    );
-  };
-
-  const menuTersaring = menuMakanan.filter((menu) => {
-    if (kategoriTerpilih === "Semua") return true;
-    return menu.kategori === kategoriTerpilih;
-  });
-
-  const gulirKeKeranjang = () => {
-    const areaKeranjang = document.getElementById("area-keranjang");
-    if (areaKeranjang) {
-      areaKeranjang.scrollIntoView({ behavior: "smooth" });
-    }
-  };
+export default async function Beranda() {
+  // Mengambil 3 menu pertama dari Sanity untuk dijadikan "Menu Unggulan"
+  const query = '*[_type == "menu"][0...3] | order(_createdAt asc)';
+  const menuUnggulan = await client.fetch(query);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 pb-24 md:pb-6 font-sans relative">
-      <Toast pesan={toast.pesan} tampil={toast.tampil} />
+    <div className="min-h-screen bg-gray-50 font-sans">
+      {/* ================= HERO SECTION ================= */}
+      <section className="relative bg-orange-600 text-white overflow-hidden">
+        {/* Dekorasi Background Tambahan (Opsional) */}
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute -top-24 -left-24 w-96 h-96 bg-white rounded-full mix-blend-overlay filter blur-3xl"></div>
+          <div className="absolute top-1/2 right-0 w-72 h-72 bg-yellow-300 rounded-full mix-blend-overlay filter blur-3xl"></div>
+        </div>
 
-      <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* KIRI: DAFTAR MENU & FILTER */}
-        <div className="md:col-span-2">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Menu Rumah Makan
+        <div className="relative max-w-5xl mx-auto px-6 py-24 md:py-32 flex flex-col items-center text-center">
+          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
+            Sajian Autentik,
+            <br className="hidden md:block" /> Rasa Bintang Lima
           </h1>
-          <p className="text-sm text-gray-500 mb-6">
-            Silakan pilih kategori hidangan favorit Anda
+          <p className="text-lg md:text-xl text-orange-100 mb-10 max-w-2xl">
+            Nikmati berbagai hidangan lezat yang dimasak dengan bahan segar
+            pilihan dan resep rahasia keluarga. Pesan sekarang dan rasakan
+            kenikmatannya!
           </p>
 
-          <div className="flex flex-wrap gap-2 mb-6">
-            {daftarKategori.map((kategori) => (
-              <button
-                key={kategori}
-                onClick={() => setKategoriTerpilih(kategori)}
-                className={`px-4 py-2 rounded-full text-sm font-semibold transition shadow-sm ${
-                  kategoriTerpilih === kategori
-                    ? "bg-orange-500 text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                {kategori}
-              </button>
-            ))}
-          </div>
-
-          {/* Logika Loading Indicator */}
-          {loadingMenu ? (
-            <div className="flex justify-center items-center py-20">
-              <p className="text-gray-500 font-medium animate-pulse">
-                Memuat menu spesial hari ini...
-              </p>
-            </div>
-          ) : menuTersaring.length === 0 ? (
-            <p className="text-gray-500 text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
-              Menu untuk kategori "{kategoriTerpilih}" belum tersedia.
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {menuTersaring.map((menu) => (
-                <MenuCard
-                  key={menu.id}
-                  menu={menu}
-                  onTambahKeranjang={tambahKeKeranjang}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* KANAN: KERANJANG BELANJA & FORM */}
-        <div
-          id="area-keranjang"
-          className="bg-white p-6 rounded-xl shadow-md h-fit sticky top-6"
-        >
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold text-gray-800">Keranjang Anda</h2>
-            {keranjang.length > 0 && (
-              <button
-                onClick={sampleHapusSemuaItem}
-                className="text-xs text-red-500 hover:text-red-700 font-semibold underline transition"
-              >
-                Kosongkan
-              </button>
-            )}
-          </div>
-
-          {!isClient ? (
-            <p className="text-gray-400 text-center py-4 text-sm animate-pulse">
-              Memuat keranjang...
-            </p>
-          ) : keranjang.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">Belum ada pesanan.</p>
-          ) : (
-            <div className="space-y-6">
-              <div className="space-y-4 max-h-60 overflow-y-auto pr-1">
-                {keranjang.map((item) => (
-                  <CartItem
-                    key={item.id}
-                    item={item}
-                    onTambah={tambahKeKeranjang}
-                    onKurang={kurangiDariKeranjang}
-                    onHapus={hapusDariKeranjang}
-                  />
-                ))}
-              </div>
-
-              <CheckoutForm form={form} setForm={setForm} errors={formErrors} />
-
-              <div className="pt-4 border-t border-gray-200">
-                <div className="flex justify-between items-center text-xl font-bold text-gray-800">
-                  <span>Total:</span>
-                  <span className="text-orange-600">
-                    {formatRupiah(totalHarga)}
-                  </span>
-                </div>
-                <button
-                  onClick={checkoutWhatsApp}
-                  className="w-full mt-4 bg-green-500 text-white font-bold py-3 rounded-lg hover:bg-green-600 transition flex justify-center items-center gap-2 shadow-md active:scale-95"
-                >
-                  Pesan via WhatsApp
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {isClient && keranjang.length > 0 && (
-        <div
-          onClick={gulirKeKeranjang}
-          className="fixed bottom-4 left-4 right-4 bg-orange-600 text-white rounded-xl shadow-[0_10px_25px_-5px_rgba(234,88,12,0.5)] p-4 flex justify-between items-center z-40 md:hidden cursor-pointer active:scale-95 transition-transform"
-        >
-          <div className="flex items-center gap-3">
-            <span className="bg-white text-orange-600 font-bold w-7 h-7 text-sm flex items-center justify-center rounded-full">
-              {totalItem}
-            </span>
-            <span className="font-semibold text-sm">Item Pesanan</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-lg">
-              {formatRupiah(totalHarga)}
-            </span>
-            <svg
-              className="w-5 h-5 text-orange-200"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          {/* TOMBOL CALL-TO-ACTION (CTA) */}
+          <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+            <Link
+              href="/pemesanan"
+              className="bg-white text-orange-600 font-bold text-lg px-8 py-3 rounded-full shadow-lg hover:bg-gray-100 hover:scale-105 transition-all duration-300 flex items-center justify-center"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M14 5l7 7m0 0l-7 7m7-7H3"
-              ></path>
-            </svg>
+              Pesan Sekarang
+            </Link>
+            <Link
+              href="/kontak"
+              className="bg-transparent border-2 border-white text-white font-bold text-lg px-8 py-3 rounded-full hover:bg-white hover:text-orange-600 transition-all duration-300 flex items-center justify-center"
+            >
+              Hubungi Kami
+            </Link>
           </div>
         </div>
-      )}
+      </section>
+
+      {/* ================= SECTION MENU UNGGULAN ================= */}
+      <section className="py-20 px-6 max-w-5xl mx-auto">
+        <div className="text-center mb-12">
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">
+            Menu Unggulan Kami
+          </h2>
+          <div className="w-24 h-1 bg-orange-500 mx-auto rounded-full"></div>
+          <p className="text-gray-500 mt-4">
+            Pilihan hidangan favorit pelanggan yang wajib Anda coba.
+          </p>
+        </div>
+
+        {menuUnggulan.length === 0 ? (
+          <p className="text-center text-gray-500">
+            Menu unggulan belum tersedia.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {menuUnggulan.map((menu) => {
+              const isTersedia = menu.tersedia !== false;
+
+              return (
+                <div
+                  key={menu._id}
+                  className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-shadow duration-300 overflow-hidden border border-gray-100 flex flex-col"
+                >
+                  {/* Gambar Menu */}
+                  <div className="relative h-56 w-full">
+                    <img
+                      src={
+                        menu.gambar
+                          ? urlFor(menu.gambar).url()
+                          : "https://via.placeholder.com/400"
+                      }
+                      alt={menu.nama}
+                      className="w-full h-full object-cover"
+                    />
+                    {!isTersedia && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <span className="bg-red-600 text-white font-bold px-4 py-1 rounded-full shadow-lg">
+                          HABIS
+                        </span>
+                      </div>
+                    )}
+                    {/* Badge Kategori */}
+                    <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm text-orange-600 text-xs font-bold px-3 py-1 rounded-full shadow-sm">
+                      {menu.kategori}
+                    </div>
+                  </div>
+
+                  {/* Detail Menu */}
+                  <div className="p-6 flex flex-col flex-grow">
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">
+                      {menu.nama}
+                    </h3>
+                    <p className="text-gray-500 text-sm mb-4 line-clamp-2 flex-grow">
+                      {menu.deskripsi || "Hidangan lezat spesial untuk Anda."}
+                    </p>
+
+                    <div className="flex justify-between items-center mt-auto pt-4 border-t border-gray-100">
+                      <span className="text-lg font-bold text-orange-600">
+                        Rp {menu.harga.toLocaleString("id-ID")}
+                      </span>
+                      <Link
+                        href="/pemesanan"
+                        className="text-sm font-semibold text-orange-500 hover:text-orange-700 transition-colors"
+                      >
+                        Beli &rarr;
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="text-center mt-12">
+          <Link
+            href="/pemesanan"
+            className="inline-block border border-orange-500 text-orange-600 font-bold px-8 py-3 rounded-full hover:bg-orange-50 transition-colors"
+          >
+            Lihat Semua Menu
+          </Link>
+        </div>
+      </section>
+
+      {/* ================= FOOTER SEDERHANA ================= */}
+      <footer className="bg-gray-800 text-gray-300 py-8 text-center text-sm">
+        <p>
+          &copy; {new Date().getFullYear()} Rumah Makan Kami. Hak Cipta
+          Dilindungi.
+        </p>
+      </footer>
     </div>
   );
 }

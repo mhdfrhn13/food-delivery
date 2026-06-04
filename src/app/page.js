@@ -2,7 +2,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { menuMakanan } from "../data/menu";
+// HAPUS import data statis: import { menuMakanan } from "../data/menu";
+import { client, urlFor } from "../sanity/lib/client"; // Import Sanity client
+
 import MenuCard from "../components/MenuCard";
 import CartItem from "../components/CartItem";
 import CheckoutForm from "../components/CheckoutForm";
@@ -10,6 +12,10 @@ import Toast from "../components/Toast";
 import { formatRupiah } from "../utils/format";
 
 export default function Home() {
+  // State untuk menyimpan data menu dari Sanity
+  const [menuMakanan, setMenuMakanan] = useState([]);
+  const [loadingMenu, setLoadingMenu] = useState(true);
+
   const [keranjang, setKeranjang] = useState([]);
   const [kategoriTerpilih, setKategoriTerpilih] = useState("Semua");
   const [form, setForm] = useState({
@@ -23,7 +29,39 @@ export default function Home() {
 
   const daftarKategori = ["Semua", "Makanan", "Minuman", "Cemilan"];
 
-  // Ambil data dari LocalStorage
+  // Mengambil data MENU dari Sanity
+  useEffect(() => {
+    const fetchMenu = async () => {
+      try {
+        // Query GROQ: Mengambil semua dokumen bertipe 'menu'
+        const query = '*[_type == "menu"] | order(_createdAt asc)';
+        const data = await client.fetch(query);
+
+        // Format ulang data agar sesuai dengan struktur komponen MenuCard Anda
+        const formattedData = data.map((item) => ({
+          id: item._id, // Menggunakan ID unik bawaan Sanity
+          nama: item.nama,
+          deskripsi: item.deskripsi || "",
+          kategori: item.kategori,
+          harga: item.harga,
+          // Cek apakah ada gambar, jika tidak beri gambar placeholder (opsional)
+          gambar: item.gambar
+            ? urlFor(item.gambar).url()
+            : "https://via.placeholder.com/400",
+        }));
+
+        setMenuMakanan(formattedData);
+      } catch (error) {
+        console.error("Gagal mengambil menu:", error);
+      } finally {
+        setLoadingMenu(false);
+      }
+    };
+
+    fetchMenu();
+  }, []);
+
+  // Mengambil data KERANJANG dari LocalStorage
   useEffect(() => {
     setIsClient(true);
     const keranjangTersimpan = localStorage.getItem("rm_keranjang_belanja");
@@ -36,7 +74,6 @@ export default function Home() {
     }
   }, []);
 
-  // Simpan data ke LocalStorage
   useEffect(() => {
     if (isClient) {
       localStorage.setItem("rm_keranjang_belanja", JSON.stringify(keranjang));
@@ -86,7 +123,6 @@ export default function Home() {
     }
   };
 
-  // Kalkulasi Total Harga dan Total Item
   const totalHarga = keranjang.reduce(
     (total, item) => total + item.harga * item.jumlah,
     0,
@@ -127,7 +163,6 @@ export default function Home() {
     return menu.kategori === kategoriTerpilih;
   });
 
-  // Fungsi untuk scroll mulus ke area keranjang saat di HP
   const gulirKeKeranjang = () => {
     const areaKeranjang = document.getElementById("area-keranjang");
     if (areaKeranjang) {
@@ -136,7 +171,6 @@ export default function Home() {
   };
 
   return (
-    // Tambahan pb-24 (padding bottom) khusus agar menu terbawah tidak tertutup oleh bar melayang di HP
     <div className="min-h-screen bg-gray-50 p-6 pb-24 md:pb-6 font-sans relative">
       <Toast pesan={toast.pesan} tampil={toast.tampil} />
 
@@ -166,7 +200,14 @@ export default function Home() {
             ))}
           </div>
 
-          {menuTersaring.length === 0 ? (
+          {/* Logika Loading Indicator */}
+          {loadingMenu ? (
+            <div className="flex justify-center items-center py-20">
+              <p className="text-gray-500 font-medium animate-pulse">
+                Memuat menu spesial hari ini...
+              </p>
+            </div>
+          ) : menuTersaring.length === 0 ? (
             <p className="text-gray-500 text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
               Menu untuk kategori "{kategoriTerpilih}" belum tersedia.
             </p>
@@ -184,7 +225,6 @@ export default function Home() {
         </div>
 
         {/* KANAN: KERANJANG BELANJA & FORM */}
-        {/* ID 'area-keranjang' ditambahkan sebagai target scroll */}
         <div
           id="area-keranjang"
           className="bg-white p-6 rounded-xl shadow-md h-fit sticky top-6"
@@ -242,27 +282,21 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ========================================== */}
-      {/* FLOATING BOTTOM BAR (KHUSUS MOBILE) */}
-      {/* ========================================== */}
       {isClient && keranjang.length > 0 && (
         <div
           onClick={gulirKeKeranjang}
           className="fixed bottom-4 left-4 right-4 bg-orange-600 text-white rounded-xl shadow-[0_10px_25px_-5px_rgba(234,88,12,0.5)] p-4 flex justify-between items-center z-40 md:hidden cursor-pointer active:scale-95 transition-transform"
         >
           <div className="flex items-center gap-3">
-            {/* Lingkaran Indikator Jumlah Item */}
             <span className="bg-white text-orange-600 font-bold w-7 h-7 text-sm flex items-center justify-center rounded-full">
               {totalItem}
             </span>
             <span className="font-semibold text-sm">Item Pesanan</span>
           </div>
-
           <div className="flex items-center gap-2">
             <span className="font-bold text-lg">
               {formatRupiah(totalHarga)}
             </span>
-            {/* Ikon Panah Kanan/Bawah untuk menandakan interaksi */}
             <svg
               className="w-5 h-5 text-orange-200"
               fill="none"

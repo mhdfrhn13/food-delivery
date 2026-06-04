@@ -38,5 +38,12 @@ export default {
         hotspot: true, // Memungkinkan admin memotong/fokus pada area gambar tertentu
       },
     },
+    {
+      name: "tersedia",
+      title: "Status Ketersediaan",
+      description: "Matikan saklar ini jika menu sedang habis/tidak tersedia.",
+      type: "boolean",
+      initialValue: true, // Secara default menu dianggap tersedia saat baru dibuat
+    },
   ],
 };

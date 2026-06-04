@@ -48,6 +48,7 @@ export default function Home() {
           gambar: item.gambar
             ? urlFor(item.gambar).url()
             : "https://via.placeholder.com/400",
+          tersedia: item.tersedia,
         }));
 
         setMenuMakanan(formattedData);
@@ -142,7 +143,7 @@ export default function Home() {
     }
 
     setFormErrors({});
-    const nomorWA = "6281234567890";
+    const nomorWA = "6285365968845";
     let pesan = `*PESANAN BARU - RUMAH MAKAN*\n\n*Detail Pengiriman:*\n• Nama Pemesan: ${form.namaPemesan}\n• Alamat Lengkap: ${form.alamat}\n`;
     if (form.catatan.trim()) pesan += `• Catatan: ${form.catatan}\n`;
 

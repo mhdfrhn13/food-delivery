@@ -16,11 +16,15 @@ export default function HalamanPemesanan() {
   const [menuMakanan, setMenuMakanan] = useState([]);
   const [loadingData, setLoadingData] = useState(true);
   const [qrisImageUrl, setQrisImageUrl] = useState("");
+  const [nomorAdmin, setNomorAdmin] = useState("6285365968845");
 
   // 2. STATE UNTUK KERANJANG & KATEGORI
   const [keranjang, setKeranjang] = useState([]);
   const [kategoriTerpilih, setKategoriTerpilih] = useState("Semua");
   const [isClient, setIsClient] = useState(false);
+
+  // --- STATE BARU: BOTTOM SHEET KERANJANG (MOBILE) ---
+  const [isCartSheetOpen, setIsCartSheetOpen] = useState(false);
 
   // 3. STATE UNTUK FORM CHECKOUT
   const [form, setForm] = useState({
@@ -41,12 +45,25 @@ export default function HalamanPemesanan() {
   const daftarKategori = ["Semua", "Makanan", "Minuman", "Cemilan"];
 
   // ==========================================
-  // A. FETCH DATA MENU & PENGATURAN QRIS (SANITY)
+  // A. MENGUNCI SCROLL BACKGROUND SAAT BOTTOM SHEET TERBUKA
+  // ==========================================
+  useEffect(() => {
+    if (isCartSheetOpen && window.innerWidth < 768) {
+      document.body.style.overflow = "hidden"; // Mencegah scroll di daftar menu
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isCartSheetOpen]);
+
+  // ==========================================
+  // B. FETCH DATA MENU & PENGATURAN QRIS (SANITY)
   // ==========================================
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch Data Menu Makanan
         const queryMenu = '*[_type == "menu"] | order(_createdAt asc)';
         const dataMenu = await client.fetch(queryMenu);
         const formattedData = dataMenu.map((item) => ({
@@ -62,12 +79,17 @@ export default function HalamanPemesanan() {
         }));
         setMenuMakanan(formattedData);
 
-        // Fetch Data Pengaturan (Untuk mendapatkan Gambar QRIS)
         const queryPengaturan = '*[_type == "pengaturan"][0]';
         const dataPengaturan = await client.fetch(queryPengaturan);
-
-        if (dataPengaturan && dataPengaturan.gambarQris) {
-          setQrisImageUrl(urlFor(dataPengaturan.gambarQris).url());
+        if (dataPengaturan) {
+          // Tangkap gambar QRIS
+          if (dataPengaturan.gambarQris) {
+            setQrisImageUrl(urlFor(dataPengaturan.gambarQris).url());
+          }
+          // Tangkap nomor WA Admin yang baru kita buat
+          if (dataPengaturan.nomorWhatsapp) {
+            setNomorAdmin(dataPengaturan.nomorWhatsapp);
+          }
         }
       } catch (error) {
         console.error("Gagal mengambil data dari Sanity:", error);
@@ -79,7 +101,7 @@ export default function HalamanPemesanan() {
   }, []);
 
   // ==========================================
-  // B. PENGELOLAAN LOCAL STORAGE UNTUK KERANJANG
+  // C. PENGELOLAAN LOCAL STORAGE UNTUK KERANJANG
   // ==========================================
   useEffect(() => {
     setIsClient(true);
@@ -96,11 +118,12 @@ export default function HalamanPemesanan() {
   useEffect(() => {
     if (isClient) {
       localStorage.setItem("rm_keranjang_belanja", JSON.stringify(keranjang));
+      window.dispatchEvent(new Event("cartUpdated")); // Memicu Global Navbar Update (jika ada)
     }
   }, [keranjang, isClient]);
 
   // ==========================================
-  // C. FUNGSI INTERAKSI KERANJANG
+  // D. FUNGSI INTERAKSI KERANJANG
   // ==========================================
   const tampilkanToast = (pesan) => {
     setToast({ pesan, tampil: true });
@@ -125,6 +148,8 @@ export default function HalamanPemesanan() {
     const itemAda = keranjang.find((item) => item.id === id);
     if (itemAda.jumlah === 1) {
       setKeranjang(keranjang.filter((item) => item.id !== id));
+      // Jika keranjang kosong, tutup bottom sheet otomatis
+      if (keranjang.length === 1) setIsCartSheetOpen(false);
     } else {
       setKeranjang(
         keranjang.map((item) =>
@@ -136,18 +161,20 @@ export default function HalamanPemesanan() {
 
   const hapusDariKeranjang = (id) => {
     setKeranjang(keranjang.filter((item) => item.id !== id));
+    if (keranjang.length === 1) setIsCartSheetOpen(false);
   };
 
   const sampleHapusSemuaItem = () => {
     if (confirm("Apakah Anda yakin ingin mengosongkan keranjang?")) {
       setKeranjang([]);
-      setPromoTerpakai(null); // Batalkan promo otomatis jika keranjang dikosongkan
+      setPromoTerpakai(null);
+      setIsCartSheetOpen(false);
       tampilkanToast("Keranjang dikosongkan.");
     }
   };
 
   // ==========================================
-  // D. FUNGSI PROMO & KALKULASI HARGA TOTAL
+  // E. FUNGSI PROMO & KALKULASI HARGA TOTAL
   // ==========================================
   const totalHarga = keranjang.reduce(
     (total, item) => total + item.harga * item.jumlah,
@@ -209,25 +236,23 @@ export default function HalamanPemesanan() {
   const totalAkhirBayar =
     totalHarga - totalPotongan > 0 ? totalHarga - totalPotongan : 0;
 
-  // Efek membatalkan promo otomatis jika pembeli mengurangi item hingga di bawah syarat belanja minimum
   useEffect(() => {
     if (promoTerpakai && totalHarga < promoTerpakai.minimalPembelian) {
       setPromoTerpakai(null);
       setPromoError(
-        `Voucher dibatalkan otomatis karena total belanja kurang dari ${formatRupiah(promoTerpakai.minimalPembelian)}`,
+        `Voucher otomatis dibatalkan: pesanan kurang dari ${formatRupiah(promoTerpakai.minimalPembelian)}`,
       );
     }
   }, [totalHarga, promoTerpakai]);
 
   // ==========================================
-  // E. FUNGSI CHECKOUT KE WHATSAPP
+  // F. FUNGSI CHECKOUT KE WHATSAPP
   // ==========================================
   const checkoutWhatsApp = () => {
     let errors = {};
     if (keranjang.length === 0) return alert("Keranjang masih kosong!");
-    if (!form.namaPemesan.trim())
-      errors.namaPemesan = "Nama pemesan wajib diisi!";
-    if (!form.alamat.trim()) errors.alamat = "Alamat pengiriman wajib diisi!";
+    if (!form.namaPemesan.trim()) errors.namaPemesan = "Wajib diisi!";
+    if (!form.alamat.trim()) errors.alamat = "Wajib diisi!";
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -235,11 +260,9 @@ export default function HalamanPemesanan() {
     }
     setFormErrors({});
 
-    // --> UBAH NOMOR DI BAWAH INI SESUAI NOMOR WA TOKO ANDA <--
-    const nomorWA = "6285365968845";
+    const nomorWA = nomorAdmin;
 
     let pesan = `*PESANAN BARU - RUMAH MAKAN*\n\n*Detail Pengiriman:*\n• Nama Pemesan: ${form.namaPemesan}\n• Alamat Lengkap: ${form.alamat}\n• Metode Pembayaran: *${form.metodePembayaran}*\n`;
-
     if (form.catatan.trim()) pesan += `• Catatan: ${form.catatan}\n`;
     if (promoTerpakai)
       pesan += `• Voucher Digunakan: *${promoTerpakai.kodeVoucher}*\n`;
@@ -253,7 +276,6 @@ export default function HalamanPemesanan() {
       pesan += `\nSubtotal: ${formatRupiah(totalHarga)}`;
       pesan += `\nDiskon Kupon: -${formatRupiah(totalPotongan)}`;
     }
-
     pesan += `\n*Total Pembayaran: ${formatRupiah(totalAkhirBayar)}*\n\nTerima kasih!`;
 
     window.open(
@@ -266,18 +288,14 @@ export default function HalamanPemesanan() {
     kategoriTerpilih === "Semua" ? true : menu.kategori === kategoriTerpilih,
   );
 
-  const gulirKeKeranjang = () => {
-    const areaKeranjang = document.getElementById("area-keranjang");
-    if (areaKeranjang) areaKeranjang.scrollIntoView({ behavior: "smooth" });
-  };
-
   // ==========================================
-  // F. RENDERING TAMPILAN (UI)
+  // G. RENDERING TAMPILAN (UI)
   // ==========================================
   return (
     <div className="min-h-screen bg-gray-50 p-6 pb-24 md:pb-6 font-sans relative">
       <Toast pesan={toast.pesan} tampil={toast.tampil} />
 
+      {/* Tombol Navigasi Manual Khusus Jika Tidak Menggunakan Global Navbar */}
       <div className="max-w-5xl mx-auto mb-6">
         <Link
           href="/"
@@ -297,12 +315,17 @@ export default function HalamanPemesanan() {
             Silakan pilih kategori hidangan favorit Anda
           </p>
 
-          <div className="flex flex-wrap gap-2 mb-6">
+          {/* STICKY CATEGORY FILTER (Mendukung Geser Horizontal di Mobile) */}
+          <div className="sticky top-16 z-30 bg-gray-50/95 backdrop-blur-md py-3 mb-6 flex overflow-x-auto hide-scrollbar gap-2 border-b border-gray-200/50 md:border-none">
             {daftarKategori.map((kategori) => (
               <button
                 key={kategori}
                 onClick={() => setKategoriTerpilih(kategori)}
-                className={`px-4 py-2 rounded-full text-sm font-semibold transition shadow-sm ${kategoriTerpilih === kategori ? "bg-orange-500 text-white" : "bg-white text-gray-600 hover:bg-gray-100"}`}
+                className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all flex-shrink-0 ${
+                  kategoriTerpilih === kategori
+                    ? "bg-orange-600 text-white shadow-md shadow-orange-600/30"
+                    : "bg-white text-gray-600 hover:bg-gray-100 border border-gray-200"
+                }`}
               >
                 {kategori}
               </button>
@@ -321,32 +344,88 @@ export default function HalamanPemesanan() {
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {menuTersaring.map((menu) => (
-                <MenuCard
-                  key={menu.id}
-                  menu={menu}
-                  onTambahKeranjang={tambahKeKeranjang}
-                />
-              ))}
+              {menuTersaring.map((menu) => {
+                // Mengecek apakah menu ini sudah ada di dalam keranjang
+                const itemDiKeranjang = keranjang.find(
+                  (item) => item.id === menu.id,
+                );
+                const jumlahPesanan = itemDiKeranjang
+                  ? itemDiKeranjang.jumlah
+                  : 0;
+
+                return (
+                  <MenuCard
+                    key={menu.id}
+                    menu={menu}
+                    jumlahPesanan={jumlahPesanan} // Mengirimkan jumlah pesanan saat ini
+                    onTambahKeranjang={tambahKeKeranjang}
+                    onKurangKeranjang={kurangiDariKeranjang} // Mengirimkan fungsi untuk mengurangi
+                  />
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* === AREA KANAN: KERANJANG === */}
+        {/* ============================================================== */}
+        {/* === AREA KANAN / BOTTOM SHEET: KERANJANG BELANJA & CHECKOUT === */}
+        {/* ============================================================== */}
+
+        {/* BACKDROP GELAP (Hanya Muncul di Mobile Saat Sheet Terbuka) */}
+        <div
+          className={`fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm transition-opacity duration-300 ${
+            isCartSheetOpen
+              ? "opacity-100 visible"
+              : "opacity-0 invisible pointer-events-none"
+          }`}
+          onClick={() => setIsCartSheetOpen(false)}
+        ></div>
+
         <div
           id="area-keranjang"
-          className="bg-white p-6 rounded-xl shadow-md h-fit sticky top-6"
+          className={`
+            fixed inset-x-0 bottom-0 z-50 bg-white p-6 rounded-t-3xl shadow-[0_-15px_40px_rgba(0,0,0,0.15)] 
+            max-h-[85vh] overflow-y-auto transform transition-transform duration-300 ease-in-out
+            md:static md:translate-y-0 md:rounded-xl md:shadow-md md:h-fit md:sticky md:top-24 md:max-h-[calc(100vh-6rem)] md:z-10
+            ${isCartSheetOpen ? "translate-y-0" : "translate-y-full"}
+          `}
         >
-          <div className="flex justify-between items-center mb-4">
+          {/* Header Mobile Bottom Sheet dengan Handle Bar & Tombol Tutup */}
+          <div className="md:hidden flex justify-center mb-4">
+            <div className="w-12 h-1.5 bg-gray-300 rounded-full"></div>
+          </div>
+
+          <div className="flex justify-between items-center mb-6 border-b pb-4 md:border-none md:pb-0">
             <h2 className="text-2xl font-bold text-gray-800">Keranjang Anda</h2>
-            {keranjang.length > 0 && (
+            <div className="flex items-center gap-4">
+              {keranjang.length > 0 && (
+                <button
+                  onClick={sampleHapusSemuaItem}
+                  className="text-xs text-red-500 hover:text-red-700 font-semibold underline transition"
+                >
+                  Kosongkan
+                </button>
+              )}
+              {/* Tombol Tutup X Khusus Mobile */}
               <button
-                onClick={sampleHapusSemuaItem}
-                className="text-xs text-red-500 hover:text-red-700 font-semibold underline transition"
+                onClick={() => setIsCartSheetOpen(false)}
+                className="md:hidden bg-gray-100 p-2 rounded-full text-gray-500 hover:text-gray-800 focus:outline-none"
               >
-                Kosongkan
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  ></path>
+                </svg>
               </button>
-            )}
+            </div>
           </div>
 
           {!isClient ? (
@@ -354,7 +433,30 @@ export default function HalamanPemesanan() {
               Memuat keranjang...
             </p>
           ) : keranjang.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">Belum ada pesanan.</p>
+            <div className="text-center py-12 flex flex-col items-center">
+              <svg
+                className="w-16 h-16 text-gray-200 mb-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.5"
+                  d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                ></path>
+              </svg>
+              <p className="text-gray-500 font-medium">
+                Keranjang masih kosong.
+              </p>
+              <button
+                onClick={() => setIsCartSheetOpen(false)}
+                className="mt-4 md:hidden text-orange-600 font-semibold border border-orange-600 px-4 py-2 rounded-full text-sm"
+              >
+                Mulai Memesan
+              </button>
+            </div>
           ) : (
             <div className="space-y-6">
               <div className="space-y-4 max-h-60 overflow-y-auto pr-1">
@@ -369,7 +471,7 @@ export default function HalamanPemesanan() {
                 ))}
               </div>
 
-              {/* FORM CHECKOUT: Mengirimkan link gambar qrisUrl yang ditarik dari Sanity */}
+              {/* FORM CHECKOUT */}
               <CheckoutForm
                 form={form}
                 setForm={setForm}
@@ -378,7 +480,7 @@ export default function HalamanPemesanan() {
               />
 
               <div className="pt-4 border-t border-gray-200">
-                {/* --- INPUT PROMO / VOUCHER --- */}
+                {/* --- INPUT KODE PROMO --- */}
                 {!promoTerpakai ? (
                   <div className="flex flex-col gap-2 mb-4">
                     <label className="text-sm font-medium text-gray-700">
@@ -448,8 +550,19 @@ export default function HalamanPemesanan() {
 
                 <button
                   onClick={checkoutWhatsApp}
-                  className="w-full mt-4 bg-green-500 text-white font-bold py-3 rounded-lg hover:bg-green-600 transition shadow-md active:scale-95"
+                  className="w-full mt-4 bg-green-500 text-white font-bold py-4 rounded-xl hover:bg-green-600 transition shadow-lg active:scale-95 flex items-center justify-center gap-2"
                 >
+                  <svg
+                    className="w-5 h-5"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M12 2C6.48 2 2 6.48 2 12c0 2.17.69 4.18 1.87 5.82L3 21l3.18-.87C7.82 21.31 9.83 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm4.3 13.6c-.22.62-1.3.1.2.62.6-.08 1.15-.4 1.34-1.28.18-1.5.87-2.34.87-2.34-.14-.23-.5-.38-1.04-.64l-2.32-1.16c-.52-.27-.9-.4-1.28.16-.37.58-.75 1.17-.92 1.4-.17.24-.35.26-.87.02-2.12-1.02-3.32-2.02-4.63-3.92-.22-.32-.02-.5.15-.65.15-.14.34-.4.5-.6.18-.2.23-.33.35-.56.12-.23.05-.44-.04-.62-.1-.2-1.26-3.04-1.73-4.16-.45-1.1-.92-.95-1.28-.95-.35 0-.75-.04-1.16-.04-.4 0-1.04.15-1.58.74C3.86 7.33 2.7 8.5 2.7 10.87c0 2.37 1.42 4.67 1.62 4.94.2.27 3.32 5.18 8.13 7.15 4.8 1.97 4.8 1.32 5.67 1.25z"
+                      clipRule="evenodd"
+                    ></path>
+                  </svg>
                   Pesan via WhatsApp
                 </button>
               </div>
@@ -458,22 +571,41 @@ export default function HalamanPemesanan() {
         </div>
       </div>
 
-      {/* TOMBOL POPUP MOBILE KETIKA KERANJANG TERISI */}
+      {/* ========================================================== */}
+      {/* TOMBOL FLOATING PEMICU BOTTOM SHEET (HANYA MUNCUL DI MOBILE) */}
+      {/* ========================================================== */}
       {isClient && keranjang.length > 0 && (
         <div
-          onClick={gulirKeKeranjang}
-          className="fixed bottom-4 left-4 right-4 bg-orange-600 text-white rounded-xl shadow-lg p-4 flex justify-between items-center z-40 md:hidden cursor-pointer active:scale-95 transition-transform"
+          onClick={() => setIsCartSheetOpen(true)}
+          className={`fixed bottom-4 left-4 right-4 bg-orange-600 text-white rounded-xl shadow-[0_10px_30px_-5px_rgba(234,88,12,0.6)] p-4 flex justify-between items-center z-30 md:hidden cursor-pointer transition-all duration-500 ease-in-out ${
+            isCartSheetOpen
+              ? "translate-y-24 opacity-0 pointer-events-none"
+              : "translate-y-0 opacity-100"
+          }`}
         >
           <div className="flex items-center gap-3">
-            <span className="bg-white text-orange-600 font-bold w-7 h-7 text-sm flex items-center justify-center rounded-full">
+            <span className="bg-white text-orange-600 font-bold w-8 h-8 text-sm flex items-center justify-center rounded-full shadow-inner">
               {totalItem}
             </span>
-            <span className="font-semibold text-sm">Item Pesanan</span>
+            <span className="font-semibold text-sm">Lihat Keranjang</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="font-bold text-lg">
               {formatRupiah(totalAkhirBayar)}
             </span>
+            <svg
+              className="w-5 h-5 text-orange-200 animate-pulse"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M5 15l7-7 7 7"
+              ></path>
+            </svg>
           </div>
         </div>
       )}

@@ -45,5 +45,11 @@ export default {
       type: "boolean",
       initialValue: true, // Secara default menu dianggap tersedia saat baru dibuat
     },
+    {
+      name: "isFeatured",
+      title: "Jadikan Menu Unggulan",
+      type: "boolean",
+      initialValue: false,
+    },
   ],
 };

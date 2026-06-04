@@ -7,7 +7,7 @@ export const revalidate = 60;
 
 export default async function Beranda() {
   // Mengambil 3 menu pertama dari Sanity untuk dijadikan "Menu Unggulan"
-  const query = '*[_type == "menu"][0...3] | order(_createdAt asc)';
+  const query = '*[_type == "menu" && isFeatured == true][0...3]';
   const menuUnggulan = await client.fetch(query);
 
   return (

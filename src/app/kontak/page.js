@@ -1,35 +1,70 @@
 // src/app/kontak/page.js
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { client } from "../../sanity/lib/client";
 
 export default function HalamanKontak() {
-  const [form, setForm] = useState({ nama: "", email: "", pesan: "" });
-  const [status, setStatus] = useState("idle"); // idle, loading, success
+  // State form kini hanya berisi nama dan pesan (tanpa email)
+  const [form, setForm] = useState({ nama: "", pesan: "" });
 
-  const handleChange = (e) => {
+  // State untuk menyimpan data kontak dari Sanity
+  const [infoKontak, setInfoKontak] = useState({
+    alamat: "Memuat alamat...",
+    whatsapp: "Memuat nomor...",
+    jam: "Memuat jam operasional...",
+  });
+
+  // Fetch data dari Sanity saat halaman dimuat
+  useEffect(() => {
+    const fetchPengaturan = async () => {
+      try {
+        const query = '*[_type == "pengaturan"][0]';
+        const data = await client.fetch(query);
+        if (data) {
+          setInfoKontak({
+            alamat: data.alamatToko || "Belum ada alamat yang diatur.",
+            whatsapp: data.nomorWhatsapp || "6285365968845", // Fallback ke nomor default jika kosong
+            jam:
+              data.jamOperasional || "Belum ada jam operasional yang diatur.",
+          });
+        }
+      } catch (error) {
+        console.error("Gagal memuat info kontak:", error);
+      }
+    };
+    fetchPengaturan();
+  }, []);
+
+  const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
-  };
 
+  // Fungsi pengiriman form langsung ke WhatsApp
   const handleSubmit = (e) => {
     e.preventDefault();
-    setStatus("loading");
 
-    // Simulasi pengiriman pesan (misal: ke API atau Email service)
-    setTimeout(() => {
-      setStatus("success");
-      setForm({ nama: "", email: "", pesan: "" });
+    // Membersihkan nomor WA dari karakter selain angka (untuk berjaga-jaga)
+    const nomorTujuan = infoKontak.whatsapp.replace(/\D/g, "");
 
-      // Kembalikan status ke idle setelah 3 detik
-      setTimeout(() => setStatus("idle"), 3000);
-    }, 1500);
+    // Memformat kerangka pesan
+    let teksPesan = `*PESAN DARI HALAMAN KONTAK*\n\n`;
+    teksPesan += `*Nama:* ${form.nama}\n`;
+    teksPesan += `*Pesan:*\n${form.pesan}`;
+
+    // Membuka tab baru menuju WhatsApp
+    window.open(
+      `https://wa.me/${nomorTujuan}?text=${encodeURIComponent(teksPesan)}`,
+      "_blank",
+    );
+
+    // Mengosongkan form setelah dialihkan
+    setForm({ nama: "", pesan: "" });
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 md:py-12 font-sans text-gray-800">
       <div className="max-w-5xl mx-auto">
-        {/* Tombol Kembali */}
         <div className="mb-8">
           <Link
             href="/"
@@ -44,18 +79,18 @@ export default function HalamanKontak() {
           <div className="w-24 h-1 bg-orange-500 mx-auto rounded-full mb-4"></div>
           <p className="text-gray-500 max-w-2xl mx-auto">
             Punya pertanyaan, saran, atau ingin melakukan pemesanan dalam jumlah
-            besar untuk acara khusus? Jangan ragu untuk menghubungi kami melalui
-            form di bawah atau kontak yang tersedia.
+            besar untuk acara khusus? Hubungi kami melalui form di bawah atau
+            kontak yang tersedia.
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          {/* INFORMASI KONTAK */}
+          {/* INFORMASI KONTAK DINAMIS */}
           <div className="p-8 md:p-12 bg-orange-600 text-white flex flex-col justify-center">
             <h2 className="text-2xl font-bold mb-6">Informasi Kontak</h2>
             <div className="space-y-6">
               <div className="flex items-start gap-4">
-                <div className="bg-white/20 p-3 rounded-full">
+                <div className="bg-white/20 p-3 rounded-full flex-shrink-0">
                   <svg
                     className="w-6 h-6 text-white"
                     fill="none"
@@ -78,16 +113,14 @@ export default function HalamanKontak() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-lg">Alamat Kami</h3>
-                  <p className="text-orange-100 mt-1">
-                    Jl. Makanan Lezat No. 123,
-                    <br />
-                    Kota Kuliner, Indonesia 25111
+                  <p className="text-orange-100 mt-1 whitespace-pre-line">
+                    {infoKontak.alamat}
                   </p>
                 </div>
               </div>
 
               <div className="flex items-start gap-4">
-                <div className="bg-white/20 p-3 rounded-full">
+                <div className="bg-white/20 p-3 rounded-full flex-shrink-0">
                   <svg
                     className="w-6 h-6 text-white"
                     fill="none"
@@ -104,12 +137,12 @@ export default function HalamanKontak() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-lg">WhatsApp / Telepon</h3>
-                  <p className="text-orange-100 mt-1">+62 853 6596 8845</p>
+                  <p className="text-orange-100 mt-1">+{infoKontak.whatsapp}</p>
                 </div>
               </div>
 
               <div className="flex items-start gap-4">
-                <div className="bg-white/20 p-3 rounded-full">
+                <div className="bg-white/20 p-3 rounded-full flex-shrink-0">
                   <svg
                     className="w-6 h-6 text-white"
                     fill="none"
@@ -126,131 +159,66 @@ export default function HalamanKontak() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-lg">Jam Operasional</h3>
-                  <p className="text-orange-100 mt-1">
-                    Setiap Hari: 09:00 - 22:00 WIB
-                  </p>
+                  <p className="text-orange-100 mt-1">{infoKontak.jam}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* FORM KONTAK */}
+          {/* FORM KONTAK KE WHATSAPP */}
           <div className="p-8 md:p-12">
             <h2 className="text-2xl font-bold mb-6">Kirim Pesan</h2>
 
-            {status === "success" ? (
-              <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-lg flex items-center gap-3">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nama Lengkap
+                </label>
+                <input
+                  type="text"
+                  name="nama"
+                  required
+                  value={form.nama}
+                  onChange={handleChange}
+                  placeholder="Masukkan nama Anda"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Pesan
+                </label>
+                <textarea
+                  name="pesan"
+                  required
+                  rows="5"
+                  value={form.pesan}
+                  onChange={handleChange}
+                  placeholder="Tulis pertanyaan atau saran Anda di sini..."
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none resize-none"
+                ></textarea>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-[#25D366] text-white font-bold py-3 rounded-lg hover:bg-[#1ebe57] transition shadow-md active:scale-95 flex items-center justify-center gap-2"
+              >
+                {/* Ikon WhatsApp */}
                 <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
+                  className="w-5 h-5"
+                  fill="currentColor"
                   viewBox="0 0 24 24"
                 >
                   <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M5 13l4 4L19 7"
+                    fillRule="evenodd"
+                    d="M12 2C6.48 2 2 6.48 2 12c0 2.17.69 4.18 1.87 5.82L3 21l3.18-.87C7.82 21.31 9.83 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm4.3 13.6c-.22.62-1.3.1.2.62.6-.08 1.15-.4 1.34-1.28.18-1.5.87-2.34.87-2.34-.14-.23-.5-.38-1.04-.64l-2.32-1.16c-.52-.27-.9-.4-1.28.16-.37.58-.75 1.17-.92 1.4-.17.24-.35.26-.87.02-2.12-1.02-3.32-2.02-4.63-3.92-.22-.32-.02-.5.15-.65.15-.14.34-.4.5-.6.18-.2.23-.33.35-.56.12-.23.05-.44-.04-.62-.1-.2-1.26-3.04-1.73-4.16-.45-1.1-.92-.95-1.28-.95-.35 0-.75-.04-1.16-.04-.4 0-1.04.15-1.58.74C3.86 7.33 2.7 8.5 2.7 10.87c0 2.37 1.42 4.67 1.62 4.94.2.27 3.32 5.18 8.13 7.15 4.8 1.97 4.8 1.32 5.67 1.25z"
+                    clipRule="evenodd"
                   ></path>
                 </svg>
-                <p className="font-semibold">
-                  Pesan Anda berhasil dikirim! Kami akan segera merespons.
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div>
-                  <label
-                    htmlFor="nama"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Nama Lengkap
-                  </label>
-                  <input
-                    type="text"
-                    id="nama"
-                    name="nama"
-                    required
-                    value={form.nama}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition"
-                    placeholder="Masukkan nama Anda"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="email"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Alamat Email
-                  </label>
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    required
-                    value={form.email}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition"
-                    placeholder="contoh@email.com"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="pesan"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Pesan Anda
-                  </label>
-                  <textarea
-                    id="pesan"
-                    name="pesan"
-                    required
-                    rows="4"
-                    value={form.pesan}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition resize-none"
-                    placeholder="Tulis pertanyaan atau pesan Anda di sini..."
-                  ></textarea>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={status === "loading"}
-                  className="w-full bg-orange-600 text-white font-bold py-3 rounded-lg hover:bg-orange-700 transition flex justify-center items-center gap-2 disabled:bg-orange-400 disabled:cursor-not-allowed"
-                >
-                  {status === "loading" ? (
-                    <>
-                      <svg
-                        className="animate-spin h-5 w-5 text-white"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      Mengirim...
-                    </>
-                  ) : (
-                    "Kirim Pesan"
-                  )}
-                </button>
-              </form>
-            )}
+                Kirim via WhatsApp
+              </button>
+            </form>
           </div>
         </div>
       </div>

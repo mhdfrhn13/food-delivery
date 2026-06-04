@@ -18,12 +18,13 @@ export default function HalamanPemesanan() {
   const [qrisImageUrl, setQrisImageUrl] = useState("");
   const [nomorAdmin, setNomorAdmin] = useState("6285365968845");
 
-  // 2. STATE UNTUK KERANJANG & KATEGORI
+  // 2. STATE UNTUK KERANJANG, KATEGORI & PENCARIAN
   const [keranjang, setKeranjang] = useState([]);
   const [kategoriTerpilih, setKategoriTerpilih] = useState("Semua");
+  const [searchQuery, setSearchQuery] = useState(""); // <-- STATE BARU UNTUK SEARCH BAR
   const [isClient, setIsClient] = useState(false);
 
-  // --- STATE BARU: BOTTOM SHEET KERANJANG (MOBILE) ---
+  // --- STATE: BOTTOM SHEET KERANJANG (MOBILE) ---
   const [isCartSheetOpen, setIsCartSheetOpen] = useState(false);
 
   // 3. STATE UNTUK FORM CHECKOUT
@@ -49,7 +50,7 @@ export default function HalamanPemesanan() {
   // ==========================================
   useEffect(() => {
     if (isCartSheetOpen && window.innerWidth < 768) {
-      document.body.style.overflow = "hidden"; // Mencegah scroll di daftar menu
+      document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "unset";
     }
@@ -82,11 +83,9 @@ export default function HalamanPemesanan() {
         const queryPengaturan = '*[_type == "pengaturan"][0]';
         const dataPengaturan = await client.fetch(queryPengaturan);
         if (dataPengaturan) {
-          // Tangkap gambar QRIS
           if (dataPengaturan.gambarQris) {
             setQrisImageUrl(urlFor(dataPengaturan.gambarQris).url());
           }
-          // Tangkap nomor WA Admin yang baru kita buat
           if (dataPengaturan.nomorWhatsapp) {
             setNomorAdmin(dataPengaturan.nomorWhatsapp);
           }
@@ -118,7 +117,7 @@ export default function HalamanPemesanan() {
   useEffect(() => {
     if (isClient) {
       localStorage.setItem("rm_keranjang_belanja", JSON.stringify(keranjang));
-      window.dispatchEvent(new Event("cartUpdated")); // Memicu Global Navbar Update (jika ada)
+      window.dispatchEvent(new Event("cartUpdated"));
     }
   }, [keranjang, isClient]);
 
@@ -148,7 +147,6 @@ export default function HalamanPemesanan() {
     const itemAda = keranjang.find((item) => item.id === id);
     if (itemAda.jumlah === 1) {
       setKeranjang(keranjang.filter((item) => item.id !== id));
-      // Jika keranjang kosong, tutup bottom sheet otomatis
       if (keranjang.length === 1) setIsCartSheetOpen(false);
     } else {
       setKeranjang(
@@ -284,18 +282,31 @@ export default function HalamanPemesanan() {
     );
   };
 
-  const menuTersaring = menuMakanan.filter((menu) =>
-    kategoriTerpilih === "Semua" ? true : menu.kategori === kategoriTerpilih,
-  );
+  // ==========================================
+  // G. LOGIKA PENYARINGAN (KATEGORI + PENCARIAN)
+  // ==========================================
+  const menuTersaring = menuMakanan.filter((menu) => {
+    // 1. Cek kecocokan kategori
+    const matchKategori =
+      kategoriTerpilih === "Semua" ? true : menu.kategori === kategoriTerpilih;
+
+    // 2. Cek kecocokan kata kunci pencarian (pada nama ATAU deskripsi)
+    const matchSearch =
+      menu.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (menu.deskripsi &&
+        menu.deskripsi.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    // Tampilkan menu hanya jika memenuhi KEDUA syarat di atas
+    return matchKategori && matchSearch;
+  });
 
   // ==========================================
-  // G. RENDERING TAMPILAN (UI)
+  // H. RENDERING TAMPILAN (UI)
   // ==========================================
   return (
     <div className="min-h-screen bg-gray-50 p-6 pb-24 md:pb-6 font-sans relative">
       <Toast pesan={toast.pesan} tampil={toast.tampil} />
 
-      {/* Tombol Navigasi Manual Khusus Jika Tidak Menggunakan Global Navbar */}
       <div className="max-w-5xl mx-auto mb-6">
         <Link
           href="/"
@@ -315,7 +326,54 @@ export default function HalamanPemesanan() {
             Silakan pilih kategori hidangan favorit Anda
           </p>
 
-          {/* STICKY CATEGORY FILTER (Mendukung Geser Horizontal di Mobile) */}
+          {/* === FITUR SEARCH BAR (BARU) === */}
+          <div className="relative mb-6">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <svg
+                className="h-5 w-5 text-gray-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+            <input
+              type="text"
+              placeholder="Cari menu makanan atau minuman..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-11 pr-10 py-3.5 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition shadow-sm text-gray-700 bg-white"
+            />
+            {/* Tombol Clear (X) - Muncul saat ada teks */}
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-orange-500 transition"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          {/* STICKY CATEGORY FILTER */}
           <div className="sticky top-16 z-30 bg-gray-50/95 backdrop-blur-md py-3 mb-6 flex overflow-x-auto hide-scrollbar gap-2 border-b border-gray-200/50 md:border-none">
             {daftarKategori.map((kategori) => (
               <button
@@ -339,13 +397,30 @@ export default function HalamanPemesanan() {
               </p>
             </div>
           ) : menuTersaring.length === 0 ? (
-            <p className="text-gray-500 text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
-              Menu untuk kategori "{kategoriTerpilih}" belum tersedia.
-            </p>
+            <div className="text-center py-12 bg-white rounded-2xl shadow-sm border border-gray-100">
+              <svg
+                className="w-16 h-16 text-gray-300 mx-auto mb-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.5"
+                  d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
+              </svg>
+              <p className="text-gray-600 font-medium text-lg mb-1">
+                Menu tidak ditemukan
+              </p>
+              <p className="text-gray-400 text-sm">
+                Coba gunakan kata kunci pencarian yang lain.
+              </p>
+            </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {menuTersaring.map((menu) => {
-                // Mengecek apakah menu ini sudah ada di dalam keranjang
                 const itemDiKeranjang = keranjang.find(
                   (item) => item.id === menu.id,
                 );
@@ -357,9 +432,9 @@ export default function HalamanPemesanan() {
                   <MenuCard
                     key={menu.id}
                     menu={menu}
-                    jumlahPesanan={jumlahPesanan} // Mengirimkan jumlah pesanan saat ini
+                    jumlahPesanan={jumlahPesanan}
                     onTambahKeranjang={tambahKeKeranjang}
-                    onKurangKeranjang={kurangiDariKeranjang} // Mengirimkan fungsi untuk mengurangi
+                    onKurangKeranjang={kurangiDariKeranjang}
                   />
                 );
               })}

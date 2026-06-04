@@ -1,23 +1,53 @@
-"use client"; // Wajib ditambahkan karena kita menggunakan interaksi state (useState)
+// src/app/page.js
+"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { menuMakanan } from "../data/menu";
+import MenuCard from "../components/MenuCard";
+import CartItem from "../components/CartItem";
+import CheckoutForm from "../components/CheckoutForm";
+import Toast from "../components/Toast";
+import { formatRupiah } from "../utils/format";
 
 export default function Home() {
   const [keranjang, setKeranjang] = useState([]);
-
-  // State untuk Formulir Detail Pengiriman
-  const [namaPemesan, setNamaPemesan] = useState("");
-  const [alamat, setAlamat] = useState("");
-  const [catatan, setCatatan] = useState("");
-
-  // State untuk Filter Kategori Menu
   const [kategoriTerpilih, setKategoriTerpilih] = useState("Semua");
+  const [form, setForm] = useState({
+    namaPemesan: "",
+    alamat: "",
+    catatan: "",
+  });
+  const [formErrors, setFormErrors] = useState({});
+  const [toast, setToast] = useState({ pesan: "", tampil: false });
+  const [isClient, setIsClient] = useState(false);
 
-  // Daftar kategori yang tersedia di aplikasi
   const daftarKategori = ["Semua", "Makanan", "Minuman", "Cemilan"];
 
-  // Fungsi untuk menambah makanan ke keranjang
+  // Ambil data dari LocalStorage
+  useEffect(() => {
+    setIsClient(true);
+    const keranjangTersimpan = localStorage.getItem("rm_keranjang_belanja");
+    if (keranjangTersimpan) {
+      try {
+        setKeranjang(JSON.parse(keranjangTersimpan));
+      } catch (error) {
+        console.error("Gagal memuat data keranjang", error);
+      }
+    }
+  }, []);
+
+  // Simpan data ke LocalStorage
+  useEffect(() => {
+    if (isClient) {
+      localStorage.setItem("rm_keranjang_belanja", JSON.stringify(keranjang));
+    }
+  }, [keranjang, isClient]);
+
+  const tampilkanToast = (pesan) => {
+    setToast({ pesan, tampil: true });
+    setTimeout(() => setToast({ pesan: "", tampil: false }), 2500);
+  };
+
   const tambahKeKeranjang = (makanan) => {
     const itemAda = keranjang.find((item) => item.id === makanan.id);
     if (itemAda) {
@@ -29,17 +59,14 @@ export default function Home() {
     } else {
       setKeranjang([...keranjang, { ...makanan, jumlah: 1 }]);
     }
+    tampilkanToast(`${makanan.nama} ditambahkan!`);
   };
 
-  // Fungsi untuk mengurangi jumlah makanan di keranjang
   const kurangiDariKeranjang = (id) => {
     const itemAda = keranjang.find((item) => item.id === id);
-
     if (itemAda.jumlah === 1) {
-      // Jika jumlahnya 1, maka hapus item dari keranjang
       setKeranjang(keranjang.filter((item) => item.id !== id));
     } else {
-      // Jika lebih dari 1, kurangi jumlahnya
       setKeranjang(
         keranjang.map((item) =>
           item.id === id ? { ...item, jumlah: item.jumlah - 1 } : item,
@@ -48,62 +75,73 @@ export default function Home() {
     }
   };
 
-  // Fungsi untuk menghapus item sepenuhnya dari keranjang
   const hapusDariKeranjang = (id) => {
     setKeranjang(keranjang.filter((item) => item.id !== id));
   };
 
-  // Fungsi untuk menghitung total harga
+  const sampleHapusSemuaItem = () => {
+    if (confirm("Apakah Anda yakin ingin mengosongkan keranjang?")) {
+      setKeranjang([]);
+      tampilkanToast("Keranjang dikosongkan.");
+    }
+  };
+
+  // Kalkulasi Total Harga dan Total Item
   const totalHarga = keranjang.reduce(
     (total, item) => total + item.harga * item.jumlah,
     0,
   );
+  const totalItem = keranjang.reduce((total, item) => total + item.jumlah, 0);
 
-  // Fungsi checkout kirim ke WhatsApp
   const checkoutWhatsApp = () => {
+    let errors = {};
     if (keranjang.length === 0) return alert("Keranjang masih kosong!");
-    if (!namaPemesan.trim())
-      return alert("Mohon isi Nama Pemesan terlebih dahulu!");
-    if (!alamat.trim())
-      return alert("Mohon isi Alamat Pengiriman terlebih dahulu!");
+    if (!form.namaPemesan.trim())
+      errors.namaPemesan = "Nama pemesan wajib diisi!";
+    if (!form.alamat.trim()) errors.alamat = "Alamat pengiriman wajib diisi!";
 
-    const nomorWA = "6281234567890"; // Ganti dengan nomor WA rumah makan
-
-    let pesan = "*PESANAN BARU - RUMAH MAKAN*\n\n";
-    pesan += `*Detail Pengiriman:*\n`;
-    pesan += `• Nama Pemesan: ${namaPemesan}\n`;
-    pesan += `• Alamat Lengkap: ${alamat}\n`;
-    if (catatan.trim()) {
-      pesan += `• Catatan: ${catatan}\n`;
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
     }
-    pesan += `\n*Daftar Pesanan:*\n`;
 
+    setFormErrors({});
+    const nomorWA = "6281234567890";
+    let pesan = `*PESANAN BARU - RUMAH MAKAN*\n\n*Detail Pengiriman:*\n• Nama Pemesan: ${form.namaPemesan}\n• Alamat Lengkap: ${form.alamat}\n`;
+    if (form.catatan.trim()) pesan += `• Catatan: ${form.catatan}\n`;
+
+    pesan += `\n*Daftar Pesanan:*\n`;
     keranjang.forEach((item) => {
-      pesan += `- ${item.nama} (${item.jumlah}x) : Rp ${(item.harga * item.jumlah).toLocaleString("id-ID")}\n`;
+      pesan += `- ${item.nama} (${item.jumlah}x) : ${formatRupiah(item.harga * item.jumlah)}\n`;
     });
 
-    pesan += `\n*Total Pembayaran: Rp ${totalHarga.toLocaleString("id-ID")}*\n\n`;
-    pesan +=
-      "Mohon info untuk instruksi pembayaran dan estimasi pengiriman. Terima kasih!";
-
-    const urlWA = `https://wa.me/${nomorWA}?text=${encodeURIComponent(pesan)}`;
-    window.open(urlWA, "_blank");
+    pesan += `\n*Total Pembayaran: ${formatRupiah(totalHarga)}*\n\nTerima kasih!`;
+    window.open(
+      `https://wa.me/${nomorWA}?text=${encodeURIComponent(pesan)}`,
+      "_blank",
+    );
   };
 
-  // Memfilter menu makanan berdasarkan kategori terpilih
   const menuTersaring = menuMakanan.filter((menu) => {
     if (kategoriTerpilih === "Semua") return true;
-
-    // Fallback deteksi otomatis jika properti 'kategori' belum didefinisikan di data/menu.js
-    const kategoriMenu =
-      menu.kategori || (menu.id === 3 ? "Minuman" : "Makanan");
-    return kategoriMenu === kategoriTerpilih;
+    return menu.kategori === kategoriTerpilih;
   });
 
+  // Fungsi untuk scroll mulus ke area keranjang saat di HP
+  const gulirKeKeranjang = () => {
+    const areaKeranjang = document.getElementById("area-keranjang");
+    if (areaKeranjang) {
+      areaKeranjang.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6 font-sans">
+    // Tambahan pb-24 (padding bottom) khusus agar menu terbawah tidak tertutup oleh bar melayang di HP
+    <div className="min-h-screen bg-gray-50 p-6 pb-24 md:pb-6 font-sans relative">
+      <Toast pesan={toast.pesan} tampil={toast.tampil} />
+
       <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* BAGIAN KIRI: DAFTAR MENU & FILTER */}
+        {/* KIRI: DAFTAR MENU & FILTER */}
         <div className="md:col-span-2">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
             Menu Rumah Makan
@@ -112,7 +150,6 @@ export default function Home() {
             Silakan pilih kategori hidangan favorit Anda
           </p>
 
-          {/* Tombol Filter Kategori */}
           <div className="flex flex-wrap gap-2 mb-6">
             {daftarKategori.map((kategori) => (
               <button
@@ -129,166 +166,73 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Grid Daftar Menu */}
           {menuTersaring.length === 0 ? (
             <p className="text-gray-500 text-center py-12 bg-white rounded-xl shadow-sm border border-gray-100">
-              Menu untuk kategori "{kategoriTerpilih}" belum tersedia saat ini.
+              Menu untuk kategori "{kategoriTerpilih}" belum tersedia.
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {menuTersaring.map((menu) => (
-                <div
+                <MenuCard
                   key={menu.id}
-                  className="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition"
-                >
-                  <img
-                    src={menu.gambar}
-                    alt={menu.nama}
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="p-4">
-                    <h2 className="text-xl font-semibold text-gray-800">
-                      {menu.nama}
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-1 h-10">
-                      {menu.deskripsi}
-                    </p>
-                    <div className="flex justify-between items-center mt-4">
-                      <span className="text-lg font-bold text-orange-600">
-                        Rp {menu.harga.toLocaleString("id-ID")}
-                      </span>
-                      <button
-                        onClick={() => tambahKeKeranjang(menu)}
-                        className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition"
-                      >
-                        + Pesan
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  menu={menu}
+                  onTambahKeranjang={tambahKeKeranjang}
+                />
               ))}
             </div>
           )}
         </div>
 
-        {/* BAGIAN KANAN: KERANJANG BELANJA & FORMULIR */}
-        <div className="bg-white p-6 rounded-xl shadow-md h-fit sticky top-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">
-            Keranjang Anda
-          </h2>
+        {/* KANAN: KERANJANG BELANJA & FORM */}
+        {/* ID 'area-keranjang' ditambahkan sebagai target scroll */}
+        <div
+          id="area-keranjang"
+          className="bg-white p-6 rounded-xl shadow-md h-fit sticky top-6"
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold text-gray-800">Keranjang Anda</h2>
+            {keranjang.length > 0 && (
+              <button
+                onClick={sampleHapusSemuaItem}
+                className="text-xs text-red-500 hover:text-red-700 font-semibold underline transition"
+              >
+                Kosongkan
+              </button>
+            )}
+          </div>
 
-          {keranjang.length === 0 ? (
+          {!isClient ? (
+            <p className="text-gray-400 text-center py-4 text-sm animate-pulse">
+              Memuat keranjang...
+            </p>
+          ) : keranjang.length === 0 ? (
             <p className="text-gray-500 text-center py-4">Belum ada pesanan.</p>
           ) : (
             <div className="space-y-6">
-              {/* Daftar Item di Keranjang */}
               <div className="space-y-4 max-h-60 overflow-y-auto pr-1">
                 {keranjang.map((item) => (
-                  <div
+                  <CartItem
                     key={item.id}
-                    className="flex justify-between items-center border-b pb-4 mb-2"
-                  >
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-800">{item.nama}</p>
-                      <div className="flex items-center gap-3 mt-1">
-                        <p className="text-sm text-gray-500">
-                          Rp {item.harga.toLocaleString("id-ID")}
-                        </p>
-
-                        {/* Kontrol Jumlah */}
-                        <div className="flex items-center bg-gray-100 rounded-lg">
-                          <button
-                            onClick={() => kurangiDariKeranjang(item.id)}
-                            className="px-2 py-1 text-gray-600 hover:text-red-500 font-bold transition"
-                          >
-                            -
-                          </button>
-                          <span className="px-2 text-sm font-semibold w-6 text-center">
-                            {item.jumlah}
-                          </span>
-                          <button
-                            onClick={() => tambahKeKeranjang(item)}
-                            className="px-2 py-1 text-gray-600 hover:text-green-500 font-bold transition"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-right ml-4">
-                      <p className="font-bold text-gray-800">
-                        Rp {(item.harga * item.jumlah).toLocaleString("id-ID")}
-                      </p>
-                      <button
-                        onClick={() => hapusDariKeranjang(item.id)}
-                        className="text-xs text-red-500 hover:underline mt-1"
-                      >
-                        Hapus
-                      </button>
-                    </div>
-                  </div>
+                    item={item}
+                    onTambah={tambahKeKeranjang}
+                    onKurang={kurangiDariKeranjang}
+                    onHapus={hapusDariKeranjang}
+                  />
                 ))}
               </div>
 
-              {/* Form Detail Pengiriman */}
-              <div className="pt-4 border-t border-gray-200 space-y-3">
-                <h3 className="text-lg font-semibold text-gray-800">
-                  Detail Pengiriman
-                </h3>
+              <CheckoutForm form={form} setForm={setForm} errors={formErrors} />
 
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Nama Pemesan <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={namaPemesan}
-                    onChange={(e) => setNamaPemesan(e.target.value)}
-                    placeholder="Masukkan nama lengkap Anda"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm text-gray-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Alamat Pengiriman <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={alamat}
-                    onChange={(e) => setAlamat(e.target.value)}
-                    placeholder="Masukkan alamat lengkap pengiriman"
-                    rows="2"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm text-gray-800 resize-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Catatan Pesanan (Opsional)
-                  </label>
-                  <input
-                    type="text"
-                    value={catatan}
-                    onChange={(e) => setCatatan(e.target.value)}
-                    placeholder="Contoh: Sambal dipisah, kuah banyakin"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm text-gray-800"
-                  />
-                </div>
-              </div>
-
-              {/* Total Harga & Button Checkout */}
               <div className="pt-4 border-t border-gray-200">
                 <div className="flex justify-between items-center text-xl font-bold text-gray-800">
                   <span>Total:</span>
                   <span className="text-orange-600">
-                    Rp {totalHarga.toLocaleString("id-ID")}
+                    {formatRupiah(totalHarga)}
                   </span>
                 </div>
-
                 <button
                   onClick={checkoutWhatsApp}
-                  className="w-full mt-4 bg-green-500 text-white font-bold py-3 rounded-lg hover:bg-green-600 transition flex justify-center items-center gap-2 shadow-md"
+                  className="w-full mt-4 bg-green-500 text-white font-bold py-3 rounded-lg hover:bg-green-600 transition flex justify-center items-center gap-2 shadow-md active:scale-95"
                 >
                   Pesan via WhatsApp
                 </button>
@@ -297,6 +241,44 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* ========================================== */}
+      {/* FLOATING BOTTOM BAR (KHUSUS MOBILE) */}
+      {/* ========================================== */}
+      {isClient && keranjang.length > 0 && (
+        <div
+          onClick={gulirKeKeranjang}
+          className="fixed bottom-4 left-4 right-4 bg-orange-600 text-white rounded-xl shadow-[0_10px_25px_-5px_rgba(234,88,12,0.5)] p-4 flex justify-between items-center z-40 md:hidden cursor-pointer active:scale-95 transition-transform"
+        >
+          <div className="flex items-center gap-3">
+            {/* Lingkaran Indikator Jumlah Item */}
+            <span className="bg-white text-orange-600 font-bold w-7 h-7 text-sm flex items-center justify-center rounded-full">
+              {totalItem}
+            </span>
+            <span className="font-semibold text-sm">Item Pesanan</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-lg">
+              {formatRupiah(totalHarga)}
+            </span>
+            {/* Ikon Panah Kanan/Bawah untuk menandakan interaksi */}
+            <svg
+              className="w-5 h-5 text-orange-200"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M14 5l7 7m0 0l-7 7m7-7H3"
+              ></path>
+            </svg>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

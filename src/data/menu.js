@@ -1,7 +1,9 @@
+// src/data/menu.js
 export const menuMakanan = [
   {
     id: 1,
     nama: "Nasi Goreng Spesial",
+    kategori: "Makanan", // Properti baru ditambahkan
     deskripsi: "Nasi goreng dengan telur, ayam suwir, dan kerupuk.",
     harga: 25000,
     gambar:
@@ -10,6 +12,7 @@ export const menuMakanan = [
   {
     id: 2,
     nama: "Ayam Bakar Madu",
+    kategori: "Makanan", // Properti baru ditambahkan
     deskripsi: "Ayam bakar bumbu madu manis gurih lengkap dengan sambal.",
     harga: 30000,
     gambar:
@@ -18,6 +21,7 @@ export const menuMakanan = [
   {
     id: 3,
     nama: "Es Teh Manis",
+    kategori: "Minuman", // Properti baru ditambahkan
     deskripsi: "Teh manis segar dengan es batu.",
     harga: 5000,
     gambar:

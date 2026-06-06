@@ -136,15 +136,15 @@ export default function CheckoutForm({ form, setForm, errors, qrisUrl }) {
         >
           Catatan Tambahan
         </label>
-        <input
-          type="text"
+        <textarea
           id="catatan"
           name="catatan"
+          rows="3"
           value={form.catatan}
           onChange={handleChange}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none transition"
-          placeholder="Misal: Jangan pakai seledri, pedas, dll"
-        />
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none transition resize-y"
+          placeholder="Misal:&#10;- Nasi Goreng tanpa seledri&#10;- Es Teh Manis gulanya sedikit"
+        ></textarea>
       </div>
     </div>
   );

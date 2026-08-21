@@ -1,7 +1,6 @@
 // src/components/CheckoutForm.js
 
 export default function CheckoutForm({ form, setForm, errors, qrisUrl }) {
-  // <-- Tambahkan qrisUrl di sini
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm({ ...form, [name]: value });
@@ -23,7 +22,8 @@ export default function CheckoutForm({ form, setForm, errors, qrisUrl }) {
           name="namaPemesan"
           value={form.namaPemesan}
           onChange={handleChange}
-          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none transition ${
+          // Tambahkan "text-gray-900" di className
+          className={`w-full px-4 py-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-orange-500 outline-none transition ${
             errors.namaPemesan ? "border-red-500" : "border-gray-300"
           }`}
           placeholder="Masukkan nama Anda"
@@ -47,7 +47,8 @@ export default function CheckoutForm({ form, setForm, errors, qrisUrl }) {
           rows="2"
           value={form.alamat}
           onChange={handleChange}
-          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 outline-none transition resize-none ${
+          // Tambahkan "text-gray-900" di className
+          className={`w-full px-4 py-2 border rounded-lg text-gray-900 focus:ring-2 focus:ring-orange-500 outline-none transition resize-none ${
             errors.alamat ? "border-red-500" : "border-gray-300"
           }`}
           placeholder="Alamat lengkap beserta patokan"
@@ -97,7 +98,6 @@ export default function CheckoutForm({ form, setForm, errors, qrisUrl }) {
             </p>
 
             <img
-              // Gunakan qrisUrl dari Sanity. Jika admin belum upload, tampilkan placeholder
               src={
                 qrisUrl ||
                 "https://via.placeholder.com/200?text=QRIS+Belum+Tersedia"
@@ -142,7 +142,8 @@ export default function CheckoutForm({ form, setForm, errors, qrisUrl }) {
           rows="3"
           value={form.catatan}
           onChange={handleChange}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none transition resize-y"
+          // Tambahkan "text-gray-900" di className
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-orange-500 outline-none transition resize-y"
           placeholder="Misal:&#10;- Nasi Goreng tanpa seledri&#10;- Es Teh Manis gulanya sedikit"
         ></textarea>
       </div>
